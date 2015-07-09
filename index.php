@@ -31,14 +31,15 @@
 -------------------------------------------------------------------------------------------------
 =================================================================================================
 ###############################################################################################*/
-
+    $client->decode_utf8 = false; //magic
 	$selectionCriteria = array();
-//set criteria, if any
-	$selectionCriteria = setSelectionCriteria(array(
-		'SelectionType' => 'PreviouslyDelivered', //or PreviouslyDelivered Undelivered
-		'Start' => '2015-11-01', //Date
+//  set criteria, if any
+	setSelectionCriteria(array(
+        'ReadRequest' => array('20150712-2690-671651', '20150709-2690-671648'),
+		'SelectionType' => 'Undelivered', //or PreviouslyDelivered
+		'Start' => '2013-01-01', //Date
 		'End' => '2016-01-01', //Date
-		'DateType' => 'CreateDate', //possible: ArrivalDate, CreateDate, DepartureDate, LastUpdateDate.
+		'DateType' => 'ArrivalDate', //possible: ArrivalDate, CreateDate, DepartureDate, LastUpdateDate.
 //		'ResStatus' => 'Confirmed' //or Cancelled
 	));
 
@@ -48,7 +49,7 @@
                     array('SelectionCriteria' => $selectionCriteria,
                         'HotelCode' => 2690
                     )
-                )
+                ),
             ),
             'Version' => '1.0'
         );
@@ -69,75 +70,168 @@
 				$selectionCriteria[$key] = $options[$key];
 			}
 		}
+        if(isset($options['ReadRequest'])){
+            foreach($options['ReadRequest'] as $id){
+                $param['ReadRequest'] = array(
+                    'UniqueID' => array(
+                        "ID" => $id
+                    )
+                );
+            }
+        }
 		return $selectionCriteria;
  	}
 
+/*------------------Cancel------------------*/
 
-	function CancelReservation($options) {
+//Sample CancelReservation() argument
+    $cancelProp = array(
+        'EchoTocken' => 'echo',
+        'ID' => '123',
+        'Amount' => '25',
+        'CurrencyCode' => 'RUB'
+    );
+//main function
+    function CancelReservation($options) {
+        if(!isset($options['ID'])){
+            return;
+        }
 		$params = array(
 			'OTA_CancelRQ' => array(
 				'version' => '1.0',
-				'EchoToken' => 'echo test', //=>$options['EchoToken']
-				'UniqueID' => array( 
-					'ID' => '1003453543' //=>$options['ID']
-				),
-				'CancellationOverrides' => array(
-					//there should be 0..n of this. Do not know, how to implemetn it simple
-					'CancellationOverride' => array(
-						'Amount' => '25',
-						'CurrencyCode' => 'RUB'
-					)
-				)
+				'UniqueID' => array(
+                    'ID' => $options['ID']
+                )
 			)
 		);
-		$this->call('HotelCancelReservationRQ', $params); //or something like that?
+        if(isset($options['EchoTocken'])){
+            $params['OTA_CancelRQ']['EchoToken'] = $options['EchoTocken'];
+        }
+        if(isset($options['Amount'])){
+            $params['OTA_CancelRQ']['CancellationOverrides'] = array(
+                'CancellationOverride' => array(
+                    'Amount' => $options['Amount']
+                )
+            );
+            if(isset($options['CurrencyCode'])){
+                $params['OTA_CancelRQ']['CancellationOverrides']['CancellationOverride'] = $options['CurrencyCode'];
+            }
+        }
+		$this->call('CancelRQ', $params); //or something like that?
 	}
 
-function NotifReport($options) {
+
+
+/*------------------Notif--------------------------*/
+//sample argument
+$notifProp = array(
+    'HotelCode'=>'TRAVELLINE',
+    'EchoTocken' => 'echo',
+    'Status' => 'Success', //Success or Error
+    'Warnings' => array('warning1', 'warning2', 'warning3'),
+    'HotelReservations' => array(
+        array(
+            'ID' => '20150712-2690-671651',
+            'CreateDateTime'=>'2015-07-08T14:55:49.873',
+            'ResStatus' => 'Reserved', //possible: Reserved, Cancelled, Checkedout, Inhouse, Requestdenied, Waitlisted,
+            'LastModifyDateTime' => '2015-07-08T14:55:50.187',
+            'RoomStays' => array(
+                'IndexNumber' => '705449'
+            ),
+            'ResGlobalInfo' => array(
+                'ResID_Value' => 'ID' //Здесь должен быть идентификатор брони в АСУ.
+            )
+        ),
+        array(
+            'ID' => '20150709-2690-671648',
+            'CreateDateTime'=>'2015-07-08T14:53:55.723',
+            'ResStatus' => 'Cancelled',
+            'LastModifyDateTime' => '2015-07-08T14:53:56.097',
+            'RoomStays' => array(
+                'IndexNumber' => '705446'
+            )
+        ),
+        array(
+            'ID' => '123',
+            'CreateDateTime'=>'2014-09-30T00:45:30+02:00',
+            'ResStatus' => 'Checkedout',
+            'LastModifyDateTime' => '2014-09-30T01:43:43.323'
+        )
+    )
+);
+
+//function
+function NotifReport($options, $errors) {
+    
+    $hotelReservations = function(){
+        $result = array();
+        $hrCollection = $options['HotelReservations'];
+        foreach($hrCollection as $key=>$value){
+            $result[$key] = array('HotelReservation' => array(
+                'CreateDateTime' => $value['CreateDateTime'],
+                'ResStatus' => $value['ResStatus'],
+                'LastModifyDateTime' => $value['LastModifyDateTime'],
+                'UniqueID' => array(
+                    'Type' => 14,
+                    'ID' => $value['ID']
+                )
+            ));
+            if(isset($value['RoomStays'])){
+                foreach($value['RoomStays'] as $roomStay=>$roomStayProp){
+                    $result[$key]['HotelReservation']['RoomStays'] = array(
+                        'RoomStay' => array(
+                            'IndexNumber' => $roomStayProp['IndexNumber'],
+                        )
+                    );
+                }
+            }
+            if($value['ResGlobalInfo']){
+                $result[$key]['HotelReservation']['ResGlobalInfo'] = array(
+                    'HotelReservationIDs' => array(
+                        'HotelReservationID' => array(
+                            'ResID_Type' => 14,
+                            'ResID_Value' => $value['ResGlobalInfo']['ResID_Value']
+                        )
+                    )
+                );
+                if ($value['ResGlobalInfo']['Comments']){
+                    $result[$key]['HotelReservation']['ResGlobalInfo']['Comments'] = array(
+                        'Comment' => array(
+                            'Text' => $value['ResGlobalInfo']['Comments']
+                        )
+                    );
+                }
+            }
+        }
+        unset($hrCollection);
+        return $result;
+    };
+    
 	$params = array(
 		'OTA_NotifReportRQ' => array(
 			'Version' => 1.0,
-			'EchoToken' => 'echo test', //=>$options['EchoToken']
-			'Success' => '', //or 'Errors'. $options['Success']
-			'Warnings' => '', //string list of errors //$options['Warnings']
 			'NotifDetails' => array(
 				'HotelNotifReport' => array(
-					'HotelReservations' => array(
-						'HotelReservation' => array( //there could be multiple items with same key. Do not know, ho to do it simple
-							'CreateDateTime' => '2014-09-30T00:45:30+02:00',
-							'ResStatus' => 'Reserved', //Reserved, Cancelled, Checkedout, Inhouse, Requestdenied, Waitlisted
-							'LastModifyDateTime' => '2014-09-30T01:43:43.323', //must be same as from OTA_ResRetrieveRS
-							'UniqueID' => array(
-								'Type' => '14',
-								'ID' => '20150709-2690-671648' //идентификатр брони в канале
-							),
-							'RoomStays' => array(
-								//same situation, as with HotelReservations
-								'RoomStay' => array(
-									'IndexNumber' => '705446' //from OTA_ResRetrieveRS.
-								)
-							),
-							'ResGlobalInfo' => array(
-								'HotelReservationIDs' => array(
-									'HotelReservationID' => array(
-										'ResID_Type' => '14',
-										'ResID_Value' => '20150709-2690-671648' //�?дентификатор брони в АСУ
-									)
-								),
-								'Comments' => array(
-									'Comment' => array(
-										'Text' => 'some text'
-									)
-								)
-							)
-						)
-					)
+					'HotelReservations' => $hotelReservations
 			),
-			'HotelCode' => 'TRAVELLINE' //$this->hotelID //ID of hotel
+			'HotelCode' => $options['HotelCode'] //$this->hotelID //ID of hotel
 			)
 		),
 	);
-	$this->call('HotelNotifReportRQ', $params); //or something like that?
+    
+    if(isset($options['EchoTocken'])){
+        $params['OTA_NotifReportRQ']['EchoToken'] = $options['EchoTocken'];
+    }
+    if($options['Status'] === 'Success'){
+        $params['OTA_NotifReportRQ'][] = 'Success';
+    } elseif($options['Status'] === 'Errors'){
+        $params['OTA_NotifReportRQ']['Errors'] = $errors;
+    }
+    if(isset($options['Warnings'])){
+        $params['OTA_NotifReportRQ']['Warnings'] = $options['Warnings'];
+    }
+    
+	$this->call('NotifReportRQ', $params); //or something like that?
 }
 
 /*###################################################################################################
@@ -168,4 +262,3 @@ function NotifReport($options) {
         ?>
     </body>
 </html>
-
