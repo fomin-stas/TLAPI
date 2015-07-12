@@ -9,14 +9,12 @@ class SoapAuth {
         $Security->Username = $username;
         $Security->Password = $password;
     }
-
 }
 
 class TravelLineAPI {
 
     private $SoapAuth;
     private $client;
-    private $selectionCriteria = array();
     private $hotelID;
     public $result;
     public $error;
@@ -32,7 +30,7 @@ class TravelLineAPI {
         $this->soapServerURL = 'https://www.qatl.ru/Api/TLConnect.svc?singleWsdl';
         $this->client = new nusoap_client($this->soapServerURL, 'wsdl', $proxyhost, $proxyport, $proxyusername, $proxypassword);
         $this->client->soap_defencoding = 'UTF-8';
-        $client->decode_utf8 = false;
+        $this->client->decode_utf8 = false;
         $namespaces = $this->client->namespaces;
         $namespaces['ns2'] = "https://www.travelline.ru/Api/TLConnect";
         $this->client->namespaces = $namespaces;
@@ -57,6 +55,7 @@ class TravelLineAPI {
     }
 
     private function setSelectionCriteria($options) {
+        $selectionCriteria = array();
         //white list of criteria
         $criteria = array(
             'SelectionType',
@@ -68,6 +67,15 @@ class TravelLineAPI {
         foreach ($criteria as $key) {
             if (isset($options[$key])) {
                 $selectionCriteria[$key] = $options[$key];
+            }
+        }
+        if(isset($options['ReadRequest'])){
+            foreach($options['ReadRequest'] as $id){
+                $param['ReadRequest'] = array(
+                    'UniqueID' => array(
+                        "ID" => $id
+                    )
+                );
             }
         }
         return $selectionCriteria;
@@ -92,24 +100,24 @@ class TravelLineAPI {
         $this->call('HotelAvailRQ', $params);
     }
 
-    public function ReadReservation($selection) {
-        if (isset($selection)) {
-            $params = array('OTA_ReadRQ' =>
-                array('ReadRequests' =>
-                    array('HotelReadRequest' =>
-                        array('SelectionCriteria' => $selectionCriteria,
-                            'HotelCode' => $this->hotelID
-                        )
+    public function ReadReservation($selection=array()) {
+        $selectionCriteria = $this->setSelectionCriteria($selection);
+        $params = array('OTA_ReadRQ' =>
+            array('ReadRequests' =>
+                array('HotelReadRequest' =>
+                    array('SelectionCriteria' => $selectionCriteria,
+                        'HotelCode' => $this->hotelID
                     )
-                ),
-                'Version' => '1.0'
-            );
-            $this->call('HotelReadReservationRQ', $params);
-        }
+                )
+            ),
+            'Version' => '1.0'
+        );
+        $this->call('HotelReadReservationRQ', $params);
     }
 
     public function CancelReservation($options) {
         if (!isset($options['ID'])) {
+            echo('test');
             return;
         }
         $params = array(
@@ -136,8 +144,8 @@ class TravelLineAPI {
         $this->call('CancelRQ', $params);
     }
 
-    public function NotifReport($options, $errors) {
-        $hotelReservations = function() {
+    public function NotifReport($options, $errors=array()) {
+        function setHotelReservations($options, $errors=array()) {
             $result = array();
             $hrCollection = $options['HotelReservations'];
             foreach ($hrCollection as $key => $value) {
@@ -154,12 +162,12 @@ class TravelLineAPI {
                     foreach ($value['RoomStays'] as $roomStay => $roomStayProp) {
                         $result[$key]['HotelReservation']['RoomStays'] = array(
                             'RoomStay' => array(
-                                'IndexNumber' => $roomStayProp['IndexNumber'],
+                                'IndexNumber' => $roomStayProp['IndexNumber']
                             )
                         );
                     }
                 }
-                if ($value['ResGlobalInfo']) {
+                if (isset($value['ResGlobalInfo'])) {
                     $result[$key]['HotelReservation']['ResGlobalInfo'] = array(
                         'HotelReservationIDs' => array(
                             'HotelReservationID' => array(
@@ -168,7 +176,7 @@ class TravelLineAPI {
                             )
                         )
                     );
-                    if ($value['ResGlobalInfo']['Comments']) {
+                    if (isset($value['ResGlobalInfo']['Comments'])) {
                         $result[$key]['HotelReservation']['ResGlobalInfo']['Comments'] = array(
                             'Comment' => array(
                                 'Text' => $value['ResGlobalInfo']['Comments']
@@ -179,25 +187,25 @@ class TravelLineAPI {
             }
             unset($hrCollection);
             return $result;
-        };
-
+        }
+        $hotelReservations = setHotelReservations($options);
         $params = array(
             'OTA_NotifReportRQ' => array(
                 'Version' => 1.0,
                 'NotifDetails' => array(
                     'HotelNotifReport' => array(
-                        'HotelReservations' => $hotelReservations
+                        'HotelReservations' => $hotelReservations[0] //this is main problem
                     ),
-                    'HotelCode' => $options['HotelCode'] //$this->hotelID //ID of hotel
+                    'HotelCode' => $this->hotelID //ID of hotel //$options['HotelCode']
                 )
             ),
         );
-
+        
         if (isset($options['EchoTocken'])) {
             $params['OTA_NotifReportRQ']['EchoToken'] = $options['EchoTocken'];
         }
         if ($options['Status'] === 'Success') {
-            $params['OTA_NotifReportRQ'][] = 'Success';
+            $params['OTA_NotifReportRQ']['Success'] = array();
         } elseif ($options['Status'] === 'Errors') {
             $params['OTA_NotifReportRQ']['Errors'] = $errors;
         }
