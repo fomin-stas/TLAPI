@@ -1,5 +1,189 @@
 <?php
 
+/* ------------------------------------------------------------------------------
+ * TLAccess - класс доступа к API TravelLine
+ * -----------------------------------------------------------------------------
+ * __construct($username, $password, $HotelID) - стандартный конструктор
+ * @username - логин для доступа к API в TravelLine
+ * @password - пароль для доступа к API в TravelLine
+ * @HotelID - ID гостиницы в TravelLine
+ */
+
+class TLAccess {
+
+    public function __construct($username, $password, $HotelID) {
+        $this->travel = new TravelLineAPI($username, $password, $HotelID);
+    }
+
+    /* -------------------------------------------------------------------------
+     * getCanceledReservation функция считывает все отмененные брони в заданном 
+     * периоде, в случае ошибки возвращает FALSE, если запрос прошел успешно, но 
+     * броней, попадающих под условия поиска нет, возвращает TRUE, во всех 
+     * остальных, массив с данными
+     * -------------------------------------------------------------------------
+     * @startDate = '2013-01-02' - с данного числа
+     * @endDate = '2016-01-02' - по данное число
+     */
+
+    public function getCanceledReservation($startDate, $endDate) {
+        $this->travel->ReadReservation(array(
+            'Start' => $startDate,
+            'End' => $endDate,
+            'DateType' => 'LastUpdateDate',
+            'ResStatus' => 'Cancelled'
+        ));
+        $result = $this->RRParsing($this->travel->result);
+        if ($result === FALSE) {
+            return FALSE;
+        } elseif ($result === TRUE) {
+            return TRUE;
+        }
+        return $result;
+    }
+
+    /* -------------------------------------------------------------------------
+     * getUndelivered - считывает все недоставленные брони, в 
+     * случае ошибки возвращает FALSE, если запрос прошел успешно, но броней, 
+     * попадающих под условия поиска нет, возвращает TRUE, во всех остальных, 
+     * массив с данными
+     * -------------------------------------------------------------------------
+     */
+
+    public function getUndelivered() {
+        $this->travel->ReadReservation(array(
+            'SelectionType' => 'Undelivered'
+        ));
+        $result = $this->RRParsing($this->travel->result);
+        $result = $this->RRParsing($this->travel->result);
+        if ($result === FALSE) {
+            return FALSE;
+        } elseif ($result === TRUE) {
+            return TRUE;
+        }
+        return $result;
+    }
+
+    /* -------------------------------------------------------------------------
+     * getLastUpdate - считывает все измененные брони в заданном периоде, в 
+     * случае ошибки возвращает FALSE, если запрос прошел успешно, но броней, 
+     * попадающих под условия поиска нет, возвращает TRUE, во всех остальных, 
+     * массив с данными
+     * -------------------------------------------------------------------------
+     * @startDate = '2013-01-02' - с данного числа
+     * @endDate = '2016-01-02' - по данное число
+     */
+
+    public function getLastUpdate($startDate, $endDate) {
+        $this->travel->ReadReservation(array(
+            'Start' => $startDate,
+            'End' => $endDate,
+            'DateType' => 'LastUpdateDate'
+        ));
+        $result = $this->RRParsing($this->travel->result);
+        if ($result === FALSE) {
+            return FALSE;
+        } elseif ($result === TRUE) {
+            return TRUE;
+        }
+        return $result;
+    }
+
+    /* -------------------------------------------------------------------------
+     * setCancelReservation - функция отмены брони по ее ID в канале, в 
+     * зависимости от успешности или неуспешности возвращает TRUE или FALSE
+     * -------------------------------------------------------------------------
+     * @IDReservation - уникальный номер в канале
+     */
+
+    public function setCancelReservation($IDReservation) {
+        $this->travel->CancelReservation(array(
+            'ID' => $IDReservation
+        ));
+        if (isset($this->travel->result['Success'])) {
+            return TRUE;
+        } else {
+            return FALSE;
+        }
+    }
+
+    /* -------------------------------------------------------------------------
+     * setAvailRooms - устанавливает доступность номеров, в зависимости
+     * от успешности или неуспешности возвращает TRUE или FALSE
+     * -------------------------------------------------------------------------
+     * @IDTypeRoom - уникальный номер типа комнат
+     * @start - с даты 
+     * @end - по дату
+     * @roomStatus - bool (0 - не доступен, 1 - доступен)
+     * @roomAvail - количество доступных номеров
+     */
+
+    public function setAvailRooms($IDTypeRoom, $start, $end, $roomStatus, $roomAvail) {
+        $status = $roomStatus ? 'Open' : 'Close';
+        $this->travel->setAvailRooms($IDTypeRoom, $start, $end, $status, $roomAvail);
+        if (isset($this->travel->result['Success'])) {
+            return TRUE;
+        } else {
+            return FALSE;
+        }
+    }
+
+    /* -------------------------------------------------------------------------
+     * RRParsing - функция разбора ответа с ReadReservation, формирует массив 
+     * номеров с соответствующими данными, если ошибка, возвращает 0
+     * -------------------------------------------------------------------------
+     * @respons - ответ с сервера на запрос ReadReservation
+     */
+
+    private function RRParsing($respons) {
+        if (!isset($respons['Success'])) {
+            return FALSE;
+        }
+        $result = array();
+        if (!isset($respons['ReservationsList']['HotelReservation'])) {
+            return TRUE;
+        }
+        $rooms = $respons['ReservationsList']['HotelReservation'];
+        foreach ($rooms as $key => $value) {
+            $result[$key]['IDReservation'] = $value['UniqueID']['!ID'];
+            $result[$key]['RoomTypeCode'] = $value['RoomStays']['RoomStay']['RoomTypes']['RoomType']['!RoomTypeCode'];
+            $result[$key]['Quantity'] = $value['RoomStays']['RoomStay']['RoomTypes']['RoomType']['!Quantity'];
+            $result[$key]['Start'] = $value['RoomStays']['RoomStay']['TimeSpan']['!Start'];
+            $result[$key]['End'] = $value['RoomStays']['RoomStay']['TimeSpan']['!End'];
+            $result[$key]['Duration'] = $value['RoomStays']['RoomStay']['TimeSpan']['!Duration'];
+            $result[$key]['Duration'] = $value['RoomStays']['RoomStay']['TimeSpan']['!Duration'];
+            $result[$key]['Status'] = $value['!ResStatus'];
+            $result[$key]['Persone'] = $value['ResGlobalInfo']['Profiles']['ProfileInfo']['Profile']['Customer']['PersonName'];
+            $result[$key]['Persone']['PhoneNumber'] = $value['ResGlobalInfo']['Profiles']['ProfileInfo']['Profile']['Customer']['Telephone']['!PhoneNumber'];
+            $result[$key]['Persone']['Email'] = $value['ResGlobalInfo']['Profiles']['ProfileInfo']['Profile']['Customer']['Email'];
+        }
+        return $result;
+    }
+
+    /* -------------------------------------------------------------------------
+     * NotifReportSuccess - подтверждение прочтения брони с канала
+     * от успешности или неуспешности возвращает TRUE или FALSE
+     * -------------------------------------------------------------------------
+     * @createdDate - дата сохранения в АСУ
+     * @ResStatus - Может принимать значения: Reserved – бронь создана;
+     * Cancelled – бронь отменена;Checkedout – гости уже выехали;Inhouse – гости
+     * проживают;Requestdenied – бронь не создана;Waitlisted – бронь создана, но
+     * требует ручной обработки администратором АСУ. 
+     * @LastModifyDateTime - должна совпадать с LastModifyDateTime при чтении
+     * @ID - идентификационный номер брони в канале
+     * @IDASU - идентификационный номер брони в АСУ
+     */
+
+    public function NotifReportSuccess($createdDate, $ResStatus, $LastModifyDateTime, $ID, $IDASU) {
+        $this->travel->NotifReportSuccess($createdDate, $ResStatus, $LastModifyDateTime, $ID, $IDASU);
+        if (isset($this->travel->result['Success'])) {
+            return TRUE;
+        } else {
+            return FALSE;
+        }
+    }
+
+}
+
 class SoapAuth {
 
     public $Security;
@@ -9,6 +193,7 @@ class SoapAuth {
         $Security->Username = $username;
         $Security->Password = $password;
     }
+
 }
 
 class TravelLineAPI {
@@ -20,7 +205,7 @@ class TravelLineAPI {
     public $error;
 
     public function __construct($username, $password, $HotelID) {
-        require_once('./lib/nusoap.php');
+        require_once("./lib/nusoap.php");
         $this->hotelID = $HotelID;
         $proxyhost = isset($_POST['proxyhost']) ? $_POST['proxyhost'] : '';
         $proxyport = isset($_POST['proxyport']) ? $_POST['proxyport'] : '';
@@ -69,8 +254,8 @@ class TravelLineAPI {
                 $selectionCriteria[$key] = $options[$key];
             }
         }
-        if(isset($options['ReadRequest'])){
-            foreach($options['ReadRequest'] as $id){
+        if (isset($options['ReadRequest'])) {
+            foreach ($options['ReadRequest'] as $id) {
                 $param['ReadRequest'] = array(
                     'UniqueID' => array(
                         "ID" => $id
@@ -100,7 +285,7 @@ class TravelLineAPI {
         $this->call('HotelAvailRQ', $params);
     }
 
-    public function ReadReservation($selection=array()) {
+    public function ReadReservation($selection = array()) {
         $selectionCriteria = $this->setSelectionCriteria($selection);
         $params = array('OTA_ReadRQ' =>
             array('ReadRequests' =>
@@ -120,8 +305,7 @@ class TravelLineAPI {
             echo('test');
             return;
         }
-        $params = array(
-            'OTA_CancelRQ' => array(
+        $params = array('OTA_CancelRQ' => array(
                 'version' => '1.0',
                 'UniqueID' => array(
                     'ID' => $options['ID']
@@ -144,75 +328,67 @@ class TravelLineAPI {
         $this->call('CancelRQ', $params);
     }
 
-    public function NotifReport($options, $errors=array()) {
-        function setHotelReservations($options, $errors=array()) {
-            $result = array();
-            $hrCollection = $options['HotelReservations'];
-            foreach ($hrCollection as $key => $value) {
-                $result[$key] = array('HotelReservation' => array(
-                        'CreateDateTime' => $value['CreateDateTime'],
-                        'ResStatus' => $value['ResStatus'],
-                        'LastModifyDateTime' => $value['LastModifyDateTime'],
-                        'UniqueID' => array(
-                            'Type' => 14,
-                            'ID' => $value['ID']
-                        )
-                ));
-                if (isset($value['RoomStays'])) {
-                    foreach ($value['RoomStays'] as $roomStay => $roomStayProp) {
-                        $result[$key]['HotelReservation']['RoomStays'] = array(
-                            'RoomStay' => array(
-                                'IndexNumber' => $roomStayProp['IndexNumber']
-                            )
-                        );
-                    }
-                }
-                if (isset($value['ResGlobalInfo'])) {
-                    $result[$key]['HotelReservation']['ResGlobalInfo'] = array(
-                        'HotelReservationIDs' => array(
-                            'HotelReservationID' => array(
-                                'ResID_Type' => 14,
-                                'ResID_Value' => $value['ResGlobalInfo']['ResID_Value']
-                            )
-                        )
-                    );
-                    if (isset($value['ResGlobalInfo']['Comments'])) {
-                        $result[$key]['HotelReservation']['ResGlobalInfo']['Comments'] = array(
-                            'Comment' => array(
-                                'Text' => $value['ResGlobalInfo']['Comments']
-                            )
-                        );
-                    }
-                }
-            }
-            unset($hrCollection);
-            return $result;
-        }
-        $hotelReservations = setHotelReservations($options);
+    public function NotifReportSuccess($createdDate, $ResStatus, $LastModifyDateTime, $ID, $IDASU, $options = array()) {
         $params = array(
             'OTA_NotifReportRQ' => array(
                 'Version' => 1.0,
+                'Success' => array(),
                 'NotifDetails' => array(
                     'HotelNotifReport' => array(
-                        'HotelReservations' => $hotelReservations[0] //this is main problem
+                        'HotelReservations' => array(
+                            'HotelReservation' => array(
+                                'CreateDateTime' => $createdDate,
+                                'ResStatus' => $ResStatus,
+                                'LastModifyDateTime' => $LastModifyDateTime,
+                                'UniqueID' => array(
+                                    'Type' => 14,
+                                    'ID' => $ID
+                                ),
+                                'ResGlobalInfo' => array(
+                                    'HotelReservationIDs' => array(
+                                        'HotelReservationID' => array(
+                                            'ResID_Type' => 14,
+                                            'ResID_Value' => $IDASU
+                                        )
+                                    )
+                                )
+                            )
+                        )
                     ),
                     'HotelCode' => $this->hotelID //ID of hotel //$options['HotelCode']
                 )
             ),
         );
-        
         if (isset($options['EchoTocken'])) {
             $params['OTA_NotifReportRQ']['EchoToken'] = $options['EchoTocken'];
-        }
-        if ($options['Status'] === 'Success') {
-            $params['OTA_NotifReportRQ']['Success'] = array();
-        } elseif ($options['Status'] === 'Errors') {
-            $params['OTA_NotifReportRQ']['Errors'] = $errors;
         }
         if (isset($options['Warnings'])) {
             $params['OTA_NotifReportRQ']['Warnings'] = $options['Warnings'];
         }
 
+        $this->call('NotifReportRQ', $params);
+    }
+
+    public function setAvailRooms($IDTypeRoom, $start, $end, $status, $roomAvail) {
+        $params = array(
+            'OTA_HotelAvailNotifRQ' => array(
+                'Version' => 1.0,
+                'AvailStatusMessages' => array(
+                    'AvailStatusMessage' => array(
+                        'StatusApplicationControl' => array(
+                            'Start' => $start,
+                            'End' => $end,
+                            'InvTypeCode' => $IDTypeRoom
+                        ),
+                        'RestrictionStatus' => array(
+                            'Status' => $status
+                        ),
+                        'BookingLimit' => $roomAvail
+                    ),
+                    'HotelCode' => $this->hotelID //ID of hotel //$options['HotelCode']
+                )
+            ),
+        );
         $this->call('NotifReportRQ', $params);
     }
 
