@@ -87,6 +87,31 @@ class TLAccess {
         }
         return $result;
     }
+    
+        /* -------------------------------------------------------------------------
+     * getLastUpdate - считывает все измененные брони в заданном периоде, в 
+     * случае ошибки возвращает FALSE, если запрос прошел успешно, но броней, 
+     * попадающих под условия поиска нет, возвращает TRUE, во всех остальных, 
+     * массив с данными
+     * -------------------------------------------------------------------------
+     * @startDate = '2013-01-02' - с данного числа
+     * @endDate = '2016-01-02' - по данное число
+     */
+
+    public function getByCreateDate($startDate, $endDate) {
+        $this->travel->ReadReservation(array(
+            'Start' => $startDate,
+            'End' => $endDate,
+            'DateType' => 'CreateDate'
+        ));
+        $result = $this->RRParsing($this->travel->result);
+        if ($result === FALSE) {
+            return FALSE;
+        } elseif ($result === TRUE) {
+            return TRUE;
+        }
+        return $result;
+    }
 
     /* -------------------------------------------------------------------------
      * setCancelReservation - функция отмены брони по ее ID в канале, в 
@@ -144,6 +169,21 @@ class TLAccess {
         }
         $rooms = $respons['ReservationsList']['HotelReservation'];
         foreach ($rooms as $key => $value) {
+            if (!is_int($key)) {
+                $value = $rooms;
+                $result[0]['IDReservation'] = $value['UniqueID']['!ID'];
+                $result[0]['RoomTypeCode'] = $value['RoomStays']['RoomStay']['RoomTypes']['RoomType']['!RoomTypeCode'];
+                $result[0]['Quantity'] = $value['RoomStays']['RoomStay']['RoomTypes']['RoomType']['!Quantity'];
+                $result[0]['Start'] = $value['RoomStays']['RoomStay']['TimeSpan']['!Start'];
+                $result[0]['End'] = $value['RoomStays']['RoomStay']['TimeSpan']['!End'];
+                $result[0]['Duration'] = $value['RoomStays']['RoomStay']['TimeSpan']['!Duration'];
+                $result[0]['Duration'] = $value['RoomStays']['RoomStay']['TimeSpan']['!Duration'];
+                $result[0]['Status'] = $value['!ResStatus'];
+                $result[0]['Persone'] = $value['ResGlobalInfo']['Profiles']['ProfileInfo']['Profile']['Customer']['PersonName'];
+                $result[0]['Persone']['PhoneNumber'] = $value['ResGlobalInfo']['Profiles']['ProfileInfo']['Profile']['Customer']['Telephone']['!PhoneNumber'];
+                $result[0]['Persone']['Email'] = $value['ResGlobalInfo']['Profiles']['ProfileInfo']['Profile']['Customer']['Email'];
+                break;
+            }
             $result[$key]['IDReservation'] = $value['UniqueID']['!ID'];
             $result[$key]['RoomTypeCode'] = $value['RoomStays']['RoomStay']['RoomTypes']['RoomType']['!RoomTypeCode'];
             $result[$key]['Quantity'] = $value['RoomStays']['RoomStay']['RoomTypes']['RoomType']['!Quantity'];
